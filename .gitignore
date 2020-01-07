@@ -1,0 +1,8 @@
+*.mp3
+# binary package
+recorder
+
+# GoLand ide
+.idea/
+# helping file for mac's finder
+.DS_Store
