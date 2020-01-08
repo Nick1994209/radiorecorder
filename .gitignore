@@ -1,6 +1,6 @@
 *.mp3
 # binary package
-recorder
+radiorecorder
 
 # GoLand ide
 .idea/
