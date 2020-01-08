@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -102,7 +103,18 @@ func (d Downloader) savingStream(
 
 func NewDownloader(url string, filePrefix string) Downloader {
 	return Downloader{
-		client:     &http.Client{Timeout: HTTPTimeout},
+		client: &http.Client{
+			Transport: &http.Transport{
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				TLSHandshakeTimeout:   time.Second * 5,
+				ResponseHeaderTimeout: time.Second * 5,
+				ExpectContinueTimeout: time.Minute * 5,
+				IdleConnTimeout:       time.Minute * 5,  // keep-alive timeout
+			},
+		},
 		Url:        url,
 		FilePrefix: filePrefix,
 
