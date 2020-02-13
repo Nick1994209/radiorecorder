@@ -1,59 +1,64 @@
 package stream
 
 import (
-	"errors"
 	"io"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
 type Downloader struct {
-	client     *http.Client
-	Url        string
-	FilePrefix string
+	client        *http.Client
+	Url           string
+	FilePrefix    string
+	FileDirectory string
 
 	logger *log.Entry
 }
 
-func (d Downloader) Download(downloadDuration time.Duration) {
-	d.download(downloadDuration, 0)
+func (d Downloader) Download(downloadDuration time.Duration) error {
+	d.logger.Infof("Download url=%s", d.Url)
+	restDuration := downloadDuration
+	var err error
+
+	for retryNumber := 0; retryNumber < maxRetryNumber; retryNumber++ {
+		d.logger = d.logger.WithField("retryNumber", retryNumber)
+		restDuration, err = d.download(restDuration)
+		if err == nil && restDuration <= 0 {
+			return nil
+		}
+	}
+	return errors.Wrap(err, "Fail downloading")
 }
 
-func (d Downloader) download(downloadDuration time.Duration, retryNumber int) {
-	logger := d.logger.WithField("retry", retryNumber)
-
-	if retryNumber >= maxRetryNumber {
-		logger.Errorf("Number retries is maximum")
-		return
-	}
-
-	logger.Info("Start downloading, durationSec=$f", downloadDuration.Seconds())
+func (d Downloader) download(downloadDuration time.Duration) (time.Duration, error) {
+	d.logger.Infof("Start downloading, durationSec=%f", downloadDuration.Seconds())
 
 	response, err := d.makeRequest()
 	if err != nil {
-		d.download(downloadDuration, retryNumber+1)
-		return
+		return downloadDuration, err
 	}
 	defer response.Body.Close()
 
 	streamFile, err := d.createFile()
 	if err != nil {
-		return
+		return downloadDuration, err
 	}
 	defer streamFile.Close()
 
 	leftDuration, err := d.savingStream(downloadDuration, streamFile, response.Body)
 	if err != nil || leftDuration != 0 {
-		d.download(leftDuration, retryNumber+1)
-		return
+		return leftDuration, err
 	}
 
-	logger.Info("Success downloaded")
+	d.logger.Info("Success downloaded")
+	return 0, nil
 }
 
 func (d Downloader) makeRequest() (response *http.Response, err error) {
@@ -72,8 +77,10 @@ func (d Downloader) makeRequest() (response *http.Response, err error) {
 
 func (d Downloader) createFile() (*os.File, error) {
 	fileName := d.FilePrefix + time.Now().Format(DateFormat) + ".mp3"
-	d.logger.Infof("Creating file=%s", fileName)
-	file, err := os.Create(fileName)
+	filePath := filepath.Join(d.FileDirectory, fileName)
+	d.logger.Infof("Creating file=%s", filePath)
+
+	file, err := os.Create(filePath)
 	if err != nil {
 		d.logger.Errorf("Fail in creating file, err='%+v'", err)
 	}
@@ -101,8 +108,24 @@ func (d Downloader) savingStream(
 	return 0, nil
 }
 
-func NewDownloader(url string, filePrefix string) Downloader {
-	return Downloader{
+func NewDownloader(url, filePrefix, directory string) (*Downloader, error) {
+	logger := log.
+		WithField("downloader_id", rand.Int())
+
+	fDirectory, err := filepath.Abs(directory)
+	if err != nil {
+		logger.Errorf("Getting filepath err=%+v", err)
+		return nil, err
+	}
+
+	// 1-execute, 2-write, 4-read (for owner, group, all)
+	dirPerms := os.FileMode(666)  // rw-rw-rw-
+	if err := os.MkdirAll(fDirectory, dirPerms); err != nil {
+		logger.Errorf("Fail while created directory err=%+v", err)
+		return nil, err
+	}
+
+	return &Downloader{
 		client: &http.Client{
 			Transport: &http.Transport{
 				DialContext: (&net.Dialer{
@@ -112,12 +135,13 @@ func NewDownloader(url string, filePrefix string) Downloader {
 				TLSHandshakeTimeout:   time.Second * 5,
 				ResponseHeaderTimeout: time.Second * 5,
 				ExpectContinueTimeout: time.Minute * 5,
-				IdleConnTimeout:       time.Minute * 5,  // keep-alive timeout
+				IdleConnTimeout:       time.Minute * 5, // keep-alive timeout
 			},
 		},
 		Url:        url,
 		FilePrefix: filePrefix,
+		FileDirectory: fDirectory,
 
-		logger: log.WithField("url", url).WithField("downloader_id", rand.Int()),
-	}
+		logger: logger,
+	}, nil
 }

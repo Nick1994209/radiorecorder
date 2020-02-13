@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 
@@ -12,27 +13,64 @@ import (
 )
 
 func init() {
+	log.SetOutput(os.Stdout)
+
 	// set moscow location for cron and for getting time.Now in Moscow tz
 	if err := os.Setenv("TZ", "Europe/Moscow"); err != nil {
 		log.Fatalf("Fail set TZ in env, err='%+v'", err)
+	}
+
+	// set the SENTRY_DSN environment variable.
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn: config.SENTRY_DSN,
+		// Enable printing of SDK debug messages.
+		// Useful when getting started or trying to figure something out.
+		Debug: true,
+	}); err != nil {
+		log.Fatalf("Fail init sentry err=%+v", err)
 	}
 }
 
 func main() {
 	c := cron.New()
 	// At 10:59 on Tuesday.
-	if _, err := c.AddFunc("59 10 * * 2", downloadSerpNasheRadio); err != nil {
-		log.Fatalf("Fail adding cron job, err='%+v'", err)
-	}
+	addTask(c, "59 10 * * 2", downloadSerpNasheRadio)
 	// At 10:59 on Thursday.
-	if _, err := c.AddFunc("59 10 * * 4", downloadSerpNasheRadio); err != nil {
-		log.Fatalf("Fail adding cron job, err='%+v'", err)
-	}
+	addTask(c, "59 10 * * 4", downloadSerpNasheRadio)
+	// every hour
+	addTask(c, "0 * * * *", ping)
+
 	log.Info("Start cron")
 	c.Run()
 }
 
+func addTask(c *cron.Cron, time string, f func()) {
+	if _, err := c.AddFunc(time, f); err != nil {
+		sentry.CaptureException(err)
+		sentry.Flush(0)
+		log.Fatalf("Fail adding cron job, err='%+v'", err)
+	}
+}
+
+func ping() {
+	log.Infof("Ping. time=%s", time.Now())
+}
+
+
 func downloadSerpNasheRadio() {
 	duration := time.Hour + 10*time.Minute
-	stream.NewDownloader(config.SerpNasheRadioUrl, "serp_nashe_radio_").Download(duration)
+	downloader, err := stream.NewDownloader(
+		config.SerpNasheRadioUrl,
+		config.SerpNasheRadioFilePrefix,
+		config.AudioDirectory,
+	)
+	if err != nil {
+		log.Error("Fail getting downloader")
+		sentry.CaptureException(err)
+		return
+	}
+
+	if err := downloader.Download(duration); err != nil {
+		sentry.CaptureException(err)
+	}
 }

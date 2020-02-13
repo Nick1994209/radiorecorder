@@ -6,3 +6,5 @@ radiorecorder
 .idea/
 # helping file for mac's finder
 .DS_Store
+
+.env
