@@ -33,6 +33,8 @@ func (d Downloader) Download(downloadDuration time.Duration) error {
 		if err == nil && restDuration <= 0 {
 			return nil
 		}
+		log.Warningf("Fail downloading err='%s', left_time=%s", err, restDuration)
+		time.Sleep(time.Second)
 	}
 	return errors.Wrap(err, "Fail downloading")
 }
@@ -46,7 +48,7 @@ func (d Downloader) download(downloadDuration time.Duration) (time.Duration, err
 	}
 	defer response.Body.Close()
 
-	streamFile, err := d.createFile()
+	streamFile, err := d.createFile(d.generateFilePath())
 	if err != nil {
 		return downloadDuration, err
 	}
@@ -75,16 +77,37 @@ func (d Downloader) makeRequest() (response *http.Response, err error) {
 	return response, nil
 }
 
-func (d Downloader) createFile() (*os.File, error) {
+
+func (d Downloader) generateFilePath() string {
 	fileName := d.FilePrefix + time.Now().Format(DateFormat) + ".mp3"
-	filePath := filepath.Join(d.FileDirectory, fileName)
+	return filepath.Join(d.FileDirectory, fileName)
+}
+
+func (d Downloader) createFile(filePath string) (*os.File, error) {
 	d.logger.Infof("Creating file=%s", filePath)
+
+	if err := d.checkFileExists(filePath); err != nil {
+		return nil, errors.Wrap(err, "Create file err")
+	}
 
 	file, err := os.Create(filePath)
 	if err != nil {
 		d.logger.Errorf("Fail in creating file, err='%+v'", err)
+		return nil, err
 	}
-	return file, err
+	return file, nil
+}
+
+func (d Downloader) checkFileExists(filePath string) error  {
+	// check file exists
+	if _, err := os.Stat(filePath); err == nil {
+		return errors.New("File=" + filePath + " exists. We will not rewrite it")
+		// path/to/whatever exists
+	} else if !os.IsNotExist(err) {
+		// something went wrong
+		return err
+	}
+	return nil
 }
 
 func (d Downloader) savingStream(
@@ -119,7 +142,7 @@ func NewDownloader(url, filePrefix, directory string) (*Downloader, error) {
 	}
 
 	// 1-execute, 2-write, 4-read (for owner, group, all)
-	dirPerms := os.FileMode(666)  // rw-rw-rw-
+	dirPerms := os.FileMode(666) // rw-rw-rw-
 	if err := os.MkdirAll(fDirectory, dirPerms); err != nil {
 		logger.Errorf("Fail while created directory err=%+v", err)
 		return nil, err
@@ -138,8 +161,8 @@ func NewDownloader(url, filePrefix, directory string) (*Downloader, error) {
 				IdleConnTimeout:       time.Minute * 5, // keep-alive timeout
 			},
 		},
-		Url:        url,
-		FilePrefix: filePrefix,
+		Url:           url,
+		FilePrefix:    filePrefix,
 		FileDirectory: fDirectory,
 
 		logger: logger,
