@@ -3,7 +3,6 @@ package config
 var AvtoRadioUrl = getEnv("SERP_NASHE_RADIO_URL", "http://77.73.90.46:1055/avtoradio")
 // https://vk.com/nashe_serp106
 var SerpNasheRadioUrl = getEnv("SERP_NASHE_RADIO_URL", "http://77.73.90.46:1055/nasheradio")
-const SerpNasheRadioFilePrefix = "serp_nashe_radio_"
 
 var AudioDirectory = getEnv("AUDIO_DIRECTORY", ".")
 var SENTRY_DSN = getEnv("SENTRY_DSN", "")

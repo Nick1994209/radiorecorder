@@ -33,10 +33,10 @@ func init() {
 
 func main() {
 	c := cron.New()
-	// At 10:59 on Tuesday.
-	addTask(c, "59 10 * * 2", downloadSerpNasheRadio)
-	// At 10:59 on Thursday.
-	addTask(c, "59 10 * * 4", downloadSerpNasheRadio)
+	// At 11:00 on Tuesday.
+	addTask(c, "0 11 * * 2", downloadDoObedaShow)
+	// At 11:00 on Thursday.
+	addTask(c, "0 11 * * 4", downloadDoObedaShow)
 	// every hour
 	addTask(c, "0 * * * *", ping)
 
@@ -57,11 +57,10 @@ func ping() {
 }
 
 
-func downloadSerpNasheRadio() {
-	duration := time.Hour + 10*time.Minute
+func downloadDoObedaShow() {
 	downloader, err := stream.NewDownloader(
 		config.SerpNasheRadioUrl,
-		config.SerpNasheRadioFilePrefix,
+		"do_obeda_show_nashe_radio",
 		config.AudioDirectory,
 	)
 	if err != nil {
@@ -70,6 +69,7 @@ func downloadSerpNasheRadio() {
 		return
 	}
 
+	duration := time.Hour
 	if err := downloader.Download(duration); err != nil {
 		sentry.CaptureException(err)
 	}

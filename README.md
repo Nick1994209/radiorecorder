@@ -41,7 +41,8 @@ Setup supervisor
 
 Redeploy with supervisor
 ```shell script
-    GOOS=linux GOARCH=amd64 go build -o radiorecorder
-    scp radiorecorder $SERVER_PATH:/home/records/radiorecorder
-    ssh $SERVER_PATH supervisorctl restart radiorecorder
+    GOOS=linux GOARCH=amd64 go build -o radiorecorder \
+      && ssh $SERVER_PATH rm /home/records/radiorecorder \
+      && scp radiorecorder $SERVER_PATH:/home/records/radiorecorder \
+      && ssh $SERVER_PATH supervisorctl restart radiorecorder
 ```
